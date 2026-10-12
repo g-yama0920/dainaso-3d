@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="だいなそー3D">
+<meta name="theme-color" content="#e9dcbf">
+<!-- ARTIFACT:HEAD (この範囲だけを Artifact 用に切り出す) -->
+<title>だいなそー 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+  /* 1画面のアプリ：上にLvとゴールド、まん中に箱庭、下に操作パネルとタブ4つ。色と書体は2D版を引きつぐ */
+  :root {
+    --bg: #e9dcbf;
+    --fg: #3a2a1a;
+    --muted: #7d6a4c;
+    --line: #2a1d14;
+    --coin: #f0b93a;
+    --coin-on: #ffd76a;
+    --card: #f7eed8;
+    --paper: #fbf6ea;
+    --win: #151a30;
+    --win-text: #f4f1e6;
+    --hp: #5fbf5a;
+    --hp-low: #e0603a;
+    --font-display: "DotGothic16", "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
+    --font-body: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body);
+    overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  button { font-family: inherit; }
+  #app {
+    --sky-top: #cfe7f4; --sky-bottom: #f3ecd9;
+    position: fixed; inset: 0; overflow: hidden;
+    background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom) 75%);
+    transition: background .6s;
+  }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* 上：Lv・HP・ゴールド・音 */
+  .hud {
+    position: absolute; top: 0; left: 0; right: 0; pointer-events: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .hud > * { pointer-events: auto; }
+  .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .lv {
+    font: 400 1.05rem/1 var(--font-display); background: var(--win); color: var(--win-text);
+    border: 2px solid var(--win-text); box-shadow: 0 0 0 2px var(--win); border-radius: 6px; padding: 5px 8px 4px;
+  }
+  .hp { display: flex; align-items: center; gap: 6px; font: 700 .8rem/1 var(--font-body); }
+  .hpbar { width: 86px; height: 10px; border: 2px solid var(--line); border-radius: 6px; background: #fff; overflow: hidden; }
+  .hpbar i { display: block; height: 100%; background: var(--hp); transition: width .3s; }
+  .right { display: flex; align-items: center; gap: 8px; }
+  .gold {
+    display: flex; align-items: center; gap: 5px; font: 700 .95rem/1 var(--font-body);
+    background: var(--paper); border: 2px solid var(--line); border-radius: 999px; padding: 5px 10px 5px 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .coin { width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe9a0, var(--coin) 60%, #c68a1a); border: 2px solid var(--line); box-sizing: border-box; }
+  .snd {
+    font: 700 .75rem/1 var(--font-body); color: var(--muted); background: var(--paper);
+    border: 1.5px solid var(--muted); border-radius: 999px; padding: 6px 9px; cursor: pointer;
+  }
+  #app[data-dark="1"] .hp { color: var(--win-text); }
+
+  /* セリフ窓（RPGのメッセージ窓） */
+  .say {
+    position: absolute; left: 50%; transform: translateX(-50%); margin: 0;
+    top: calc(env(safe-area-inset-top, 0px) + 54px);
+    width: min(calc(100% - 32px), 440px); box-sizing: border-box; pointer-events: none;
+    background: var(--win); color: var(--win-text);
+    border: 3px solid var(--win-text); box-shadow: 0 0 0 3px var(--win); border-radius: 8px;
+    padding: 9px 14px 8px; font: 400 1rem/1.6 var(--font-display); text-wrap: pretty;
+  }
+  .toasts { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 150px); display: grid; justify-items: center; gap: 6px; pointer-events: none; }
+  .toast {
+    display: flex; align-items: center; gap: 6px; background: var(--paper); border: 2px solid var(--line); border-radius: 999px;
+    padding: 4px 14px 4px 8px; font: 700 .9rem/1.3 var(--font-body); box-shadow: 0 3px 0 rgba(42,29,20,.25);
+    animation: toastIn .25s ease-out; transition: opacity .4s, transform .4s;
+  }
+  .toast.out { opacity: 0; transform: translateY(-8px); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
+  .floats { position: absolute; inset: 0; pointer-events: none; }
+  .float {
+    position: absolute; transform: translate(-50%, -50%); font: 400 1.6rem/1 var(--font-display);
+    color: #fff; -webkit-text-stroke: 1px var(--line); text-shadow: 0 2px 0 var(--line), 2px 0 0 var(--line), -2px 0 0 var(--line), 0 -2px 0 var(--line);
+    animation: floatUp 1.05s ease-out forwards;
+  }
+  .float.crit { color: #ffd84a; font-size: 2rem; }
+  .float.hurt { color: #ff8a70; }
+  .float.heal { color: #9be38a; }
+  @keyframes floatUp { 0% { opacity: 0; margin-top: 10px; } 15% { opacity: 1; margin-top: 0; } 100% { opacity: 0; margin-top: -46px; } }
+
+  /* 下：操作パネルとタブ */
+  .bottom { position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: 8px; pointer-events: none; }
+  .bottom > * { pointer-events: auto; }
+  .bar { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; flex-wrap: wrap; }
+  .bar button {
+    all: unset; box-sizing: border-box; cursor: pointer; text-align: center; min-width: 96px;
+    background: var(--coin); color: var(--line); border: 2px solid var(--line); border-radius: 12px;
+    padding: 10px 12px 9px; font: 700 .95rem/1.2 var(--font-body); box-shadow: 0 3px 0 var(--line);
+  }
+  .bar button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+  .chip { background: var(--paper); border: 2px solid var(--line); border-radius: 999px; padding: 7px 12px; font: 700 .85rem/1.2 var(--font-body); font-variant-numeric: tabular-nums; }
+  .tabs {
+    display: grid; grid-template-columns: repeat(4, 1fr); background: var(--paper); border-top: 2px solid var(--line);
+    padding: 6px 8px calc(env(safe-area-inset-bottom, 0px) + 6px);
+  }
+  .tabs button {
+    all: unset; box-sizing: border-box; cursor: pointer; display: grid; justify-items: center; gap: 2px; padding: 4px 0;
+    color: var(--muted); font: 700 .78rem/1.1 var(--font-body); border-radius: 10px;
+  }
+  .tabs button svg { width: 26px; height: 26px; }
+  .tabs button[aria-current="page"] { color: var(--line); background: var(--coin-on); }
+  .tabs button:disabled { opacity: .4; }
+  #app.battling .tabs { display: none; }
+
+  /* バトル */
+  .battle {
+    margin: 0 12px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--win); color: var(--win-text);
+    border: 3px solid var(--win-text); box-shadow: 0 0 0 3px var(--win); border-radius: 10px; padding: 10px 12px 12px;
+    display: grid; gap: 8px; font-family: var(--font-display);
+  }
+  .bt-row { display: grid; grid-template-columns: 7.5em 1fr auto; align-items: center; gap: 8px; font-size: .95rem; }
+  .bt-bar { height: 10px; border: 2px solid var(--win-text); border-radius: 6px; overflow: hidden; background: #2c3354; }
+  .bt-bar i { display: block; height: 100%; background: var(--hp); transition: width .3s; }
+  .bt-bar.mon i { background: #e0603a; }
+  .bt-num { font-variant-numeric: tabular-nums; font-size: .85rem; min-width: 4.2em; text-align: right; }
+  .bt-msg { margin: 0; min-height: 3.2em; font-size: 1rem; line-height: 1.6; }
+  .bt-cmds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 92px; }
+  .bt-cmds button {
+    all: unset; box-sizing: border-box; cursor: pointer; text-align: center; background: var(--coin); color: var(--line);
+    border: 2px solid var(--line); border-radius: 10px; padding: 10px 6px 9px; font: 700 1rem/1.2 var(--font-body); box-shadow: 0 3px 0 #0a0d18;
+  }
+  .bt-cmds button:disabled { opacity: .4; }
+  .bt-cmds .sub { grid-column: 1 / -1; display: grid; gap: 6px; max-height: 34vh; overflow: auto; }
+  .bt-cmds .wide { text-align: left; display: grid; gap: 2px; padding: 8px 12px; }
+  .bt-cmds .wide small { font-weight: 500; font-size: .78rem; }
+  .bt-cmds .back { background: var(--card); }
+
+  /* シート（下から出る画面） */
+  .sheet { position: absolute; inset: 0; background: rgba(42,29,20,.35); display: flex; align-items: flex-end; z-index: 5; }
+  .sheet-card {
+    width: 100%; max-height: 80%; box-sizing: border-box; display: flex; flex-direction: column;
+    background: var(--paper); border-top: 3px solid var(--line); border-radius: 18px 18px 0 0;
+    padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); animation: sheetUp .22s ease-out;
+  }
+  @keyframes sheetUp { from { transform: translateY(40px); opacity: .4; } }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 2px dashed #d8c9a8; }
+  .sheet-head h2 { margin: 0; font: 400 1.3rem/1.2 var(--font-display); letter-spacing: .04em; }
+  .sheet-head button { all: unset; cursor: pointer; font: 700 .85rem/1 var(--font-body); padding: 8px 12px; border: 2px solid var(--line); border-radius: 999px; background: var(--card); }
+  .sheet-body { overflow: auto; padding-top: 10px; display: grid; gap: 10px; align-content: start; -webkit-overflow-scrolling: touch; }
+  .sheet-body h3 { margin: 6px 0 0; font: 400 1.05rem/1.2 var(--font-display); }
+  .note { margin: 0; font-size: .88rem; line-height: 1.6; color: var(--muted); }
+  .note b { color: var(--fg); }
+  .empty { margin: 16px 0; text-align: center; line-height: 1.8; color: var(--muted); }
+  .n { font-weight: 700; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .cell, .zcell {
+    box-sizing: border-box; display: grid; justify-items: center; gap: 2px; text-align: center; padding: 8px 4px;
+    background: var(--card); border: 2px solid var(--line); border-radius: 12px; font: 700 .82rem/1.25 var(--font-body); color: var(--fg);
+  }
+  .cell { cursor: pointer; }
+  .cell.on { background: var(--coin-on); }
+  .cell:disabled { opacity: .45; }
+  .pot { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .slot {
+    all: unset; box-sizing: border-box; width: 74px; height: 74px; display: grid; place-items: center; align-content: center;
+    border: 2px dashed var(--muted); border-radius: 14px; font: 400 1.6rem/1 var(--font-display); color: var(--muted); cursor: default;
+  }
+  .slot.full { border-style: solid; border-color: var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  .slot small { font: 700 .7rem/1.2 var(--font-body); }
+  .plus { font: 400 1.4rem var(--font-display); }
+  .go, .row em {
+    all: unset; box-sizing: border-box; cursor: pointer; background: var(--coin); border: 2px solid var(--line); border-radius: 12px;
+    padding: 10px 16px 9px; font: 700 1rem/1.2 var(--font-body); box-shadow: 0 3px 0 var(--line); font-style: normal; white-space: nowrap;
+  }
+  .go:disabled { opacity: .45; box-shadow: none; }
+  .list { display: grid; gap: 8px; }
+  .row {
+    all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+    background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 8px 10px;
+  }
+  .row span { min-width: 0; font-weight: 700; }
+  .row small { display: block; font-weight: 500; font-size: .8rem; color: var(--muted); line-height: 1.45; }
+  .row em { padding: 8px 12px 7px; font-size: .9rem; }
+  .row:disabled { opacity: .5; }
+
+  .stat-top { display: flex; align-items: center; gap: 14px; }
+  .lvbig { font: 400 1rem/1 var(--font-display); }
+  .lvbig b { font-size: 2.4rem; font-weight: 400; }
+  .stat-xp { flex: 1; display: grid; gap: 4px; min-width: 0; }
+  .stat-xp small { color: var(--muted); font-size: .8rem; }
+  .xp { height: 12px; border: 2px solid var(--line); border-radius: 7px; overflow: hidden; background: #fff; }
+  .xp i { display: block; height: 100%; background: var(--coin); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; }
+  .stats div { background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 8px; text-align: center; }
+  .stats dt { font-size: .78rem; color: var(--muted); }
+  .stats dd { margin: 2px 0 0; font: 400 1.5rem/1 var(--font-display); }
+  .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .skills li { border: 2px dashed #cdbd99; border-radius: 10px; padding: 7px 10px; color: var(--muted); }
+  .skills li.got { border-style: solid; border-color: var(--line); background: var(--card); color: var(--fg); }
+  .skills small { display: block; font-size: .78rem; }
+
+  .places { display: grid; gap: 8px; }
+  .place {
+    all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px;
+    background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  }
+  .place b { font: 400 1.25rem/1.2 var(--font-display); }
+  .place small { grid-column: 1 / -1; color: var(--muted); font-size: .82rem; }
+  .place em { font-style: normal; font-size: .78rem; font-weight: 700; align-self: center; border: 1.5px solid var(--muted); border-radius: 999px; padding: 3px 8px; color: var(--muted); }
+  .place em.rec { background: var(--coin-on); border-color: var(--line); color: var(--line); }
+  .place.locked { background: transparent; border-style: dashed; border-color: #cdbd99; cursor: default; }
+
+  .ztabs { display: flex; gap: 6px; }
+  .ztab { all: unset; cursor: pointer; flex: 1; text-align: center; padding: 8px 4px; border: 2px solid var(--line); border-radius: 10px; font: 700 .9rem/1 var(--font-body); background: var(--card); }
+  .ztab[aria-pressed="true"] { background: var(--win); color: var(--win-text); }
+  .zgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .zcell { justify-items: start; text-align: left; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; padding: 8px 10px; }
+  .zcell small { grid-column: 1 / -1; font-weight: 500; font-size: .75rem; color: var(--muted); line-height: 1.45; }
+  .zcell.unknown { border-style: dashed; border-color: #cdbd99; color: var(--muted); background: transparent; }
+  .q { width: 44px; height: 44px; display: grid; place-items: center; font: 400 1.4rem var(--font-display); }
+  .q.mon { color: #6e8a4a; }
+
+  .notice {
+    position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); margin: 0;
+    width: min(calc(100% - 32px), 360px); text-align: center; font: 400 1rem/1.6 var(--font-display); color: var(--muted);
+  }
+  button:focus-visible { outline: 3px solid #3a7bd5; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    .toast, .sheet-card, .float { animation: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.min.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+<!-- /ARTIFACT:HEAD -->
+</head>
+<body>
+<!-- ARTIFACT:BODY -->
+<div id="app">
+  <canvas id="cv" aria-label="なその箱庭。ドラッグで回す、ピンチで寄る、タップで選ぶ"></canvas>
+  <header class="hud">
+    <div class="who">
+      <span class="lv" id="hud-lv">Lv1</span>
+      <span class="hp" id="hud-hp" hidden><span class="hpbar"><i id="hud-hpbar"></i></span><span id="hud-hpnum"></span></span>
+    </div>
+    <div class="right">
+      <span class="gold"><i class="coin" aria-hidden="true"></i><b id="gold">0</b>G</span>
+      <button id="snd" class="snd" type="button" aria-pressed="true">音 ON</button>
+    </div>
+  </header>
+  <p id="loading" class="notice">なそを よんでいます…</p>
+  <p id="say" class="say" hidden></p>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="floats" class="floats"></div>
+  <div class="bottom">
+    <section id="bar" class="bar" aria-label="できること"></section>
+    <section id="battle" class="battle" hidden aria-label="バトル">
+      <div class="bt-row"><span id="bt-mon">まもの</span><span class="bt-bar mon"><i id="bt-monhp"></i></span><span class="bt-num"></span></div>
+      <div class="bt-row"><span>なそ</span><span class="bt-bar"><i id="bt-hp"></i></span><span class="bt-num" id="bt-hpnum"></span></div>
+      <p class="bt-msg" id="bt-msg"></p>
+      <div class="bt-cmds" id="bt-cmds"></div>
+    </section>
+    <nav class="tabs" aria-label="画面">
+      <button type="button" data-tab="home" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>いえ</button>
+      <button type="button" data-tab="outing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/></svg>おでかけ</button>
+      <button type="button" data-tab="zukan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7M8 11h7"/></svg>ずかん</button>
+      <button type="button" data-tab="shop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>おみせ</button>
+    </nav>
+  </div>
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-labelledby="sheet-title">
+      <div class="sheet-head"><h2 id="sheet-title"></h2><button type="button" data-close>とじる</button></div>
+      <div class="sheet-body" id="sheet-body"></div>
+    </div>
+  </div>
+</div>
+<script>
+  // 読み込みに失敗したとき（通信・古い端末）に、何が起きたかを出す
+  setTimeout(function () {
+    if (window.__naso3dStarted) return;
+    var el = document.getElementById('loading');
+    if (el) el.textContent = '3Dを読み込めませんでした。ページを開き直してください。';
+  }, 15000);
+</script>
+<script type="module" src="src/main.js"></script>
+<!-- /ARTIFACT:BODY -->
+</body>
+</html>
